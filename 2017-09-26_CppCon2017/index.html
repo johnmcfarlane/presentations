@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Title</title>
+    <meta charset="utf-8">
+    <style>
+      @import url(https://fonts.googleapis.com/css?family=Yanone+Kaffeesatz);
+      @import url(https://fonts.googleapis.com/css?family=Droid+Serif:400,700,400italic);
+      @import url(https://fonts.googleapis.com/css?family=Ubuntu+Mono:400,700,400italic);
+
+      body { font-family: 'Droid Serif'; }
+      h1, h2, h3 {
+        font-family: 'Yanone Kaffeesatz';
+        font-weight: normal;
+      }
+      .remark-code, .remark-inline-code { font-family: 'Ubuntu Mono'; }
+      .white { color: #FFFFFF; }
+    </style>
+  </head>
+  <body>
+    <textarea id="source">
+
+class: center, middle
+
+# CNL: A Compositional Numeric Library
+
+## John McFarlane
+
+### A9.com
+
+???
+Hi, I'm John McFarlane.
+Today I'd like to talk about numbers.
+
+---
+
+# Background
+
+???
+A couple of years ago, I floated the idea of standardizing fixed-point arithmetic.
+But the reference implementation grew and grew because I needed to prove that 
+you can solve fixed-point in isolation without designing yourself into a corner.
+And to do that, I needed to take a stab at solving a bunch of other problems.
+This is the talk of those problems and that library.
+
+---
+
+# The Problem with Integers
+
+1. Low resolution
+
+2. Limited range
+
+3. 'Interesting' behavior of arithmetic operations
+
+???
+Those problems are all about integers.
+This talk is not about floating-point numbers.
+They have problems of their own 
+but mostly they don't surprise the unsuspecting user nearly as much as integers.
+And integers can solve some of them, but then you have to face these ones.
+Lets quickly look at floats.
+---
+
+# The Problem with Floating-Point
+
+1. Complicated
+
+   * ± 1.significand * 2 <sup>exponent</sup>
+   
+   * special values, denormalized values, -0
+   
+2. Occasional weirdness can surprise:
+
+   * determinism, associativity, commutativity and ordering
+   
+3. `<cmath>` functions lack `constexpr`
+   
+4. Not the best with fractions
+
+5. Variable resolution
+
+6. Costly in energy and silicon
+
+???
+Take both of these lists with a punch of salt.
+Numerics is a surprisingly deep topic.
+Believe me, I had no idea what I was getting myself into. 
+Writing a numerics library has taught me a tonne of stuff
+that I didn't learn in twenty years of programming.
+
+Also, these lists are not specific to C++. 
+They affect other languages to a certain extent.
+But C++ offers ways in which to tackle some of these problems.
+And that's essentilly what CNL tries to do.
+---
+
+# Analysis
+
+* General concensus: floating-point problems are not *so* bad.
+
+* Floats are just a bag of integers anyway, right?
+
+* Integers are a powerful abstraction over registers.
+
+* But we can do a lot better.
+
+* so ...
+
+---
+
+# Goal
+
+"**Do for `int` what the STL did for `[]`.**"
+
+* Provide zero-cost abstractions over language-level features:
+
+  ```c++
+  std::array<T, N> a;  // T a[N]
+  std::array<T, N>::iterator i = std::begin(a); // T* i
+  ```
+
+* Maintain a familiar interface:
+
+  ```c++
+  auto const& third = a[2];
+  for (auto const& element : a) { /* ... */ }
+  ```
+
+* And allow users to opt in to positive-cost functionality:
+
+  ```c++
+  std::vector<T> a{n};
+  auto const& bad_element = a.at(n+1);  // gotcha!
+  ```
+  
+* But most importantly...
+
+???
+Yeah!
+But what really needs doing to `int`? 
+I mentioned I've learned a thing or two about numbers recently.
+Most important has been to understand what really needs fixing.
+---
+
+# Goal
+
+"**Do for `int` what the STL did for `[]`.**"
+
+* Compose!
+
+  ```c++
+  using fs_cache = unordered_map<filesystem::path, vector<byte>>;
+  ```
+
+???
+You can take the components of the STL 
+and you can combine them with each other.
+And crucially, you can combine them with other things as well.
+
+But like any high quality tool, the STL doesn't try to do everything.
+So there's a complement to this rule...
+---
+
+# Implied Goal
+
+"**Don't do for `int` what STL doesn't do for `[]`.**"
+
+???
+"Don't do for `int` what STL doesn't do for `[]`."
+Pretty vague, right?
+What do I mean by this?
+--
+
+* Don't make the user pay for what they don't need.
+
+  ```c++
+  std::array<int, 4> a { 1, 7, 11, 27 };
+  std::cout << a[x];
+  ```
+
+???
+Here, `x` is an integer.
+Lets assume the compiler has no idea what the value of `x` might be.
+That means it's either zero, one, two or three.
+There are no other value that `x` can be.
+If a programmer writes a program in which `x` is any other value and that program runs on a computer,
+then it's entirely on their own head what happens to that computer ... .
+---
+
+# when `x == 0`
+
+  ```c++
+  std::array<int, 4> a { 1, 7, 11, 27 };
+  std::cout << a[x];
+  ```
+  
+## prints `1`
+
+---
+
+# when `x == 1`
+
+  ```c++
+  std::array<int, 4> a { 1, 7, 11, 27 };
+  std::cout << a[x];
+  ```
+  
+## prints `7`
+
+---
+
+# when `x == 2`
+
+  ```c++
+  std::array<int, 4> a { 1, 7, 11, 27 };
+  std::cout << a[x];
+  ```
+  
+## prints `11`
+
+---
+
+# when `x == 3`
+
+  ```c++
+  std::array<int, 4> a { 1, 7, 11, 27 };
+  std::cout << a[x];
+  ```
+  
+## prints `27`
+
+---
+
+# when `x == 4`
+
+  ```c++
+  std::array<int, 4> a { 1, 7, 11, 27 };
+  std::cout << a[x];
+  ```
+  
+## ...
+
+---
+
+background-image: url(ub.jpg)
+
+# .white[when `x == 4`]
+
+  ```c++
+  std::array<int, 4> a { 1, 7, 11, 27 };
+  std::cout << a[x];
+  ```
+
+---
+
+background-image: url(bosch.jpg)
+
+# .white[when `x == 5`]
+
+  ```c++
+  std::array<int, 4> a { 1, 7, 11, 27 };
+  std::cout << a[x];
+  ```
+
+---
+
+# Why??
+
+???
+There's two questions here.
+Some people ask: why would you allow such undesirable things to happen?
+Other people are asking: I understand what purpose is serves. How on earth do we explain it to others?
+--
+
+* Contracts.
+
+--
+
+* *Defined Behavior* is what is forfeit when a contract is broken.
+
+--
+
+* Contracts are entered into by two parties.
+
+--
+
+* Contracts are agreed upon for mutual benefit.
+
+---
+
+## Contracts are Complicated
+
+<img style="float:center; width: 100%; height: 100%" src="robocop.png">
+
+???
+Contracts are complicated.
+Who gets the reference here? Who remembers the climax of the movie, Robocop?
+Who can describe this scene in *one* sentence?
+This simple scene: who can sum it up without breathing in?
+It's complicated.
+There are multiple agents, each acting on their own interests, 
+each with a relationship to the other agents.
+It's like the three-body problem. It's hard.
+---
+
+# Contracts in C++
+
+```c++
+void do_something(Object const& thing);
+```
+
+???
+Here's something a little closer to the present.
+Consider this function declaration.
+What part of this line do you think I'm going to concentrate on?
+Concentrate on the `const` keyword / type qualifier.
+--
+
+Question : Is `const` liberating or restrictive?
+
+--
+
+Answer : It depends.
+
+--
+
+Implementor : "It's restrictive!"
+
+--
+
+User : "It's liberating!"
+
+---
+
+# when `(x>=0 && x<4)`
+
+  ```c++
+  std::array<int, 4> a { 1, 7, 11, 27 };
+  std::cout << a[x];
+  ```
+  
+## prints the right thing
+
+--
+
+## prints the right thing ASAP
+
+---
+
+# when `(x>=0 && x<4)`
+
+  ```c++
+  std::vector<int> a {{ 1, 7, 11, 27 }};
+  std::cout << a.at(x);
+  ```
+  
+## user can "opt in" to safety
+
+## user can "cash in" ASAP
+
+---
+
+# Exhibit A: `fixed_point`
+
+Definition:
+
+```c++
+// cnl/fixed_point.h
+namespace cnl {
+
+    template<typename Rep = int, int Exponent = 0>
+    class fixed_point;
+
+}
+```
+
+???
+Here is the declaration for the fixed_point class.
+This class does one, very simple job:
+it scales an integer by a power of two.
+--
+
+Example usage:
+
+```c++
+#include <cnl/fixed_point.h>
+
+auto n = cnl::fixed_point<int, -8>{ 1.5 };
+```
+
+???
+Here's how you use it to define a fixed-point number.
+Here, n is an int -- only it's worth 8 bits less than normal.
+If you peer inside this object, it's got one member variable. 
+It's an int. And its value is 384 
+because that's how you represent 1.5 in a fixed-point variable 
+with 8 fractional digits.
+--
+
+...or...
+
+???
+Or if you prefer the classical style
+--
+
+```c++
+cnl::fixed_point<int, -8> n = 1.5;
+```
+
+???
+This works just the same.
+---
+
+# What Could Go Wrong?
+
+--
+
+Lots!
+
+--
+
+```c++
+auto n = *(cnl::fixed_point<int8_t, -4>*){ nullptr };
+// null pointer dereference
+```
+
+--
+
+```c++
+auto o = cnl::fixed_point<int8_t, -4>{ 10 };
+// overflow!
+```
+
+--
+
+```c++
+auto p = cnl::fixed_point<int8_t, -4>{ 0.999 };
+// precision error: p == 0
+```
+
+--
+
+```c++
+auto q = p / 0;
+// divide by zero
+```
+
+--
+
+```c++
+auto r = cnl::fixed_point<int8_t, -4>{ 1 / 16.f } << 800;
+// error: you shifted too far!
+```
+
+???
+You might think I'm not really selling it very well, am I?
+Well it's important to know what you're getting yourself into.
+But I'm still really talking about undefined behavior and contracts.
+The contract is that fixed_point will fix one single thing that's missing from `int`, 
+namely the ability to scale by a fixed number of binary places.
+---
+
+# What Is Going Wrong?
+
+--
+
+Nothing New!
+
+--
+
+```c++
+//auto n = (cnl::fixed_point<int8_t, -4>*){ nullptr };
+auto n = (int8_t*){ nullptr };
+```
+
+--
+
+```c++
+//auto o = cnl::fixed_point<int8_t, -4>{ 10 };
+auto o = int8_t{ 160 };
+```
+
+--
+
+```c++
+//auto p = cnl::fixed_point<int8_t, -4>{ 0.999 };
+auto p = int8_t{ 0.999 };
+```
+
+--
+
+```c++
+auto q = p / 0;
+```
+
+--
+
+```c++
+auto r = int8_t{ 1 } << 800;
+```
+
+Don't blame me: `int` was like that when I got here!
+
+???
+And it does that. All the other stuff that's wrong with integers, stays wrong.
+This is a fight fixed_point avoids.
+It is what they call a separate concern.
+That doesn't mean it cannot or should not be addressed.
+But it's not called fixed_point because it fixes everybody's problems.
+
+However, I do think that there are a few upgrades that belong in fixed_point.
+They mostly involve constant values.
+---
+
+# User-Defined Literals
+
+???
+Here's an interesting type that was introduced to the standard library in 2011.
+--
+
+```c++
+namespace std {
+    template<typename Integer, Integer Value>
+    struct integral_constant;
+}
+```
+
+???
+It's called integral_constant and you can use it when `constexpr` just isn't constant enough for you.
+Specifically, when you need to do type stuff, you sometimes need one of these.
+Because it's a type, not a value.
+Well, it's a class template and the value it represents is one of its template parameters.
+It's a sneaky value. It's a ninja value.
+Let me show you what it can do.
+--
+
+```c++
+auto f = fixed_point<int, -5>{3.25};
+```
+
+???
+Here's an innocent, unsuspecting fixed-point variable.
+You can perform all the regular arithmetic on it.
+Wouldn't much of a numerics library if you couldn't.
+--
+
+```c++
+auto f
+
+    </textarea>
+    <script src="https://remarkjs.com/downloads/remark-latest.min.js">
+    </script>
+    <script>
+      var slideshow = remark.create();
+    </script>
+  </body>
+</html>
