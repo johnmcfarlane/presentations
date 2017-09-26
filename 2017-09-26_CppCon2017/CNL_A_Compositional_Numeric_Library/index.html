@@ -45,26 +45,48 @@ And to do that, I needed to take a stab at solving a bunch of other problems.
 <img style="float: center; width: 100%; height: 100%" src="github.png">
 
 ???
-This is the talk about those problems and solutions I've come up with.
-And the library, CNL, where I collect them and work on them.
+This is the talk about those problems and the solutions I've come up with.
+And the library, CNL, where I collect those solutions and work on them.
+I'm here to promote a library and efforts to standardize some of these features.
+But I've tried to structure it in such a way 
+that I share some of the things I've learned about numerics along the way.
+Hopefully, you'll leave this talk slightly better equipped to avoid some of the pitfalls of working with C++ numeric types.
+
+
 
 ---
 
 # The Problem with Integers
 
+???
+Lets run through some of those limmitations, starting with integers.
+And when I say integer or float, I'm generally referring 
+to the fundamental arithmetic types in the C++ language 
+which it largely inherits from C before it.
+And remember that most problems I list with these types
+are something we've tollerated for fifty years.
+Given the criticism they come in for, 
+I think they're a hugely underappreciated triumph of language design.
+--
+
 1. Low resolution
 
+???
+Firstly they only count whole numbers.
+--
+
 2. Limited range
+
+???
+Secondly, they have limited range.
+--
 
 3. 'Interesting' behavior of arithmetic operations
 
 ???
-Those problems are all about integers.
-This talk is not about floating-point numbers.
-They have problems of their own 
-but mostly they don't surprise the unsuspecting user nearly as much as integers.
-And integers can solve some of them, but then you have to face these ones.
-Lets quickly look at floats.
+Thirdly, 'interesting' behavior of arithmetic operations.
+There's a lot of that and I'll share a little as I go.
+Now lets look at floats.
 ---
 
 # The Problem with Floating-Point
@@ -75,29 +97,46 @@ Lets quickly look at floats.
    
    * special values, denormalized values, -0
    
+???
+There's a lot to know about floats.
+John Farrier did a good talk covering floats at CppCon2015.
+I recommend that talk if you're curious about floats.
+This talk will hardly mention floats. Big topic.
+--
+   
 2. Occasional weirdness can surprise:
 
    * determinism, associativity, commutativity and ordering
    
+???
+They do some things which are surprising for a tool used to "do math".
+If you swap the sides of a plus or multiply operator, you expect the same result for instance.
+You might be surprised by the result when you use floating-point.
+--
+
 3. `<cmath>` functions lack `constexpr`
    
-4. Not the best with fractions
+???
+A bugbear in the era of wanting to make everything a constant expression
+is that you cannot write portable compile-time trigonometry using the standard library.
+--
 
-5. Variable resolution
-
-6. Costly in energy and silicon
+4. Variable resolution
 
 ???
-Take both of these lists with a punch of salt.
-Numerics is a surprisingly deep topic.
-Believe me, I had no idea what I was getting myself into. 
-Writing a numerics library has taught me a tonne of stuff
-that I didn't learn in twenty years of programming.
+A floating-point value in the millions range has much lower resolution than a floating-point value in the tens.
+This is an aspect of their adaptability but it can have unpleasant consequences.
+Basically, they are less precise than they seem.
+--
 
-Also, these lists are not specific to C++. 
-They affect other languages to a certain extent.
-But C++ offers ways in which to tackle some of these problems.
-And that's essentially what CNL tries to do.
+5. Costly in energy and silicon
+
+???
+This relates to the first point.
+To implement a floating-point unit you need many more times the silicon. Many more times.
+And to power those units, you need many more times the energy.
+This makes them a poor choice for cloud and embedded applications
+where computer per watt is important.
 ---
 
 # Analysis
@@ -142,7 +181,7 @@ So here's my aim...
 
 
 ---
-# Goal
+# Goal of CNL
 
 "**Do for `int` what the STL did for `[]`.**"
 
@@ -204,7 +243,7 @@ And most importantly ... well -- for this talk at least --
 it's not really mentioned so much because you take it for granted when you start using class templates...
 ---
 
-# Goal
+# Goal of CNL
 
 "**Do for `int` what the STL did for `[]`.**"
 
@@ -236,7 +275,7 @@ Pretty vague, right?
 What do I mean by this?
 --
 
-* Don't make the user pay for what they don't need.
+* Don't make the user pay for what they don't use.
 
 ???
 I mentioned this before. 
@@ -244,10 +283,10 @@ It's very tempting to look at the arithmetic types provided by the language
 and decide you going to fix them.
 But how you go about that is crucial.
 First you have to understand what is broken.
-Time for some examples.
+Time for some code.
 ---
 
-# Exhibit A: `fixed_point`
+# Fixed-Point Arithmetic
 
 Definition:
 
@@ -269,8 +308,12 @@ namespace cnl {
 Here is the declaration for the fixed_point class.
 This class does one, very simple job:
 it adds a decimal point to an integer.
-The dot, dot, dot is an interface that makes `fixed_point` look rather like a floating-point number.
-But really it's just an `int` wrapped in a class.
+It's rather more than I've listed here. 
+The full interface makes it behave mostly like the integer with which it is specialized -- `int` by default.
+In fact, if you leave the defaults, you get something that behaves as much like an int as I can manage.
+This may seem surprising. Surely it should be more like a float. It's got "point" in the name!
+That's true, but it also has "fixed" in the name and all integers are fixed-point numbers.
+Fixed and inflexible.
 --
 
 Example usage:
@@ -287,8 +330,8 @@ void f() {
 ???
 Here's how you use it to define a fixed-point number.
 I'm using a modern style here with `auto` and uniform initialization.
-There's nothing to stop you instantiating variables in the classic style.
-Sorry if that's not your thing. Please just grit your teeth and bear through it!
+That's mostly a style choice.
+But I'll get back to that.
 
 Anyway here, n is an int -- only it's worth 8 bits less than normal.
 So the actual value stored is 64 and then it's divided by 256 to get 0.25.
@@ -331,13 +374,12 @@ bool foo(float) {
 ```
 ???
 this.
-Don't believe me?
 --
 
-<iframe width="100%" height="200px" src="https://godbolt.org/embed-ro#g:!((g:!((g:!((h:codeEditor,i:(j:1,source:'%23include+%3Chttps://gist.githubusercontent.com/johnmcfarlane/83c775ebac70217e3ccde408fee10556/raw/aeafd7b27ba5e2ff6bdfed68a2c59fecf5b99c80/cnl_complete.h%3E%0Ausing+cnl::fixed_point%3B%0A%0Abool+foo(float+f)+%7B%0A++++auto+fixed+%3D+fixed_point%3Cint,+-16%3E%7Bf%7D%3B%0A++++auto+fixed_plus_one+%3D+fixed+%2B+1%3B%0A++++return+fixed_plus_one+%3E+fixed%3B%0A%7D'),l:'5',n:'0',o:'C%2B%2B+source+%231',t:'0')),k:47.204724409448815,l:'4',m:99.99999999999999,n:'0',o:'',s:0,t:'0'),(g:!((h:compiler,i:(compiler:g481,filters:(___0:(),b:'0',binary:'1',commentOnly:'0',demangle:'0',directives:'0',execute:'1',intel:'0',jquery:'3.2.1',length:1,prevObject:(___0:(),length:1,prevObject:(___0:(jQuery321067871834031518191:(display:'')),length:1)),trim:'0',undefined:'1'),libs:!(),options:'-std%3Dc%2B%2B11+-O3',source:1),l:'5',n:'0',o:'x86-64+gcc+4.8.1+(Editor+%231,+Compiler+%231)',t:'0')),header:(),k:52.79527559055118,l:'4',n:'0',o:'',s:0,t:'0')),l:'2',n:'0',o:'',t:'0')),version:4"></iframe>
+<iframe width="100%" height="200px" src="https://godbolt.org/embed-ro#g:!((g:!((g:!((h:codeEditor,i:(j:1,source:'%23include+%3Chttps://gist.githubusercontent.com/johnmcfarlane/83c775ebac70217e3ccde408fee10556/raw/aeafd7b27ba5e2ff6bdfed68a2c59fecf5b99c80/cnl_complete.h%3E%0Ausing+cnl::fixed_point%3B%0A%0Abool+foo(float+f)+%7B%0A++++auto+fixed+%3D+fixed_point%3Cint,+-16%3E%7Bf%7D%3B%0A++++auto+fixed_plus_one+%3D+fixed+%2B+1%3B%0A++++return+fixed_plus_one+%3E+fixed%3B%0A%7D'),l:'5',n:'0',o:'C%2B%2B+source+%231',t:'0')),k:50,l:'4',m:99.99999999999999,n:'0',o:'',s:0,t:'0'),(g:!((h:compiler,i:(compiler:g481,filters:(___0:(),b:'0',binary:'1',commentOnly:'0',demangle:'0',directives:'0',execute:'1',intel:'0',jquery:'3.2.1',length:1,prevObject:(___0:(),length:1,prevObject:(___0:(jQuery321067871834031518191:(display:'')),length:1)),trim:'0',undefined:'1'),libs:!(),options:'-std%3Dc%2B%2B11+-O3',source:1),l:'5',n:'0',o:'x86-64+gcc+4.8.1+(Editor+%231,+Compiler+%231)',t:'0')),header:(),k:50,l:'4',n:'0',o:'',s:0,t:'0')),l:'2',n:'0',o:'',t:'0')),version:4"></iframe>
 
 ???
-Here's the assembler.
+And here's the assembler.
 
 And remember the previous example that prints 1.5?
 
@@ -347,7 +389,7 @@ And remember the previous example that prints 1.5?
 # The Good
 
 
-<iframe width="100%" height="450px" src="https://godbolt.org/embed-ro#g:!((g:!((g:!((h:codeEditor,i:(fontScale:0.7464959999999999,j:1,source:'%23include+%3Chttps://gist.githubusercontent.com/johnmcfarlane/83c775ebac70217e3ccde408fee10556/raw/aeafd7b27ba5e2ff6bdfed68a2c59fecf5b99c80/cnl_complete.h%3E%0A%23include+%3Ciostream%3E%0A%0Ausing+cnl::fixed_point%3B%0A%0Avoid+f()+%7B%0A++++auto+n+%3D+fixed_point%3Cint,+-8%3E%7B+0.25f+%7D%3B%0A++++std::cout+%3C%3C+float(n+*+5)%3B+//+prints+%221.25%22%0A%7D%0A%0Avoid+i()+%7B%0A++++int+n+%3D+.25f+*+256.f%3B%0A++++std::cout+%3C%3C+(n+*+5)+/+256.f%3B+//+prints+%221.25%22%0A%7D'),l:'5',n:'0',o:'C%2B%2B+source+%231',t:'0')),k:49.97389033942559,l:'4',m:99.99999999999999,n:'0',o:'',s:0,t:'0'),(g:!((h:compiler,i:(compiler:g481,filters:(___0:(),b:'0',binary:'1',commentOnly:'0',demangle:'0',directives:'0',execute:'1',intel:'0',jquery:'3.2.1',length:1,prevObject:(___0:(),length:1,prevObject:(___0:(jQuery321067871834031518191:(display:'')),length:1)),trim:'0',undefined:'1'),fontScale:0.7464959999999999,libs:!(),options:'-std%3Dc%2B%2B11+-O3',source:1),l:'5',n:'0',o:'x86-64+gcc+4.8.1+(Editor+%231,+Compiler+%231)',t:'0')),header:(),k:50.02610966057441,l:'4',n:'0',o:'',s:0,t:'0')),l:'2',n:'0',o:'',t:'0')),version:4"></iframe>
+<iframe width="100%" height="450px" src="https://godbolt.org/embed-ro#g:!((g:!((g:!((h:codeEditor,i:(fontScale:0.7464959999999999,j:1,source:'%23include+%3Chttps://gist.githubusercontent.com/johnmcfarlane/83c775ebac70217e3ccde408fee10556/raw/aeafd7b27ba5e2ff6bdfed68a2c59fecf5b99c80/cnl_complete.h%3E%0A%23include+%3Ciostream%3E%0A%0Ausing+cnl::fixed_point%3B%0A%0Avoid+f()+%7B%0A++++auto+n+%3D+fixed_point%3Cint,+-8%3E%7B+0.25f+%7D%3B%0A++++std::cout+%3C%3C+float(n+*+5)%3B+//+prints+%221.25%22%0A%7D%0A%0Avoid+i()+%7B%0A++++int+n+%3D+.25f+*+256.f%3B%0A++++std::cout+%3C%3C+(n+*+5)+/+256.f%3B+//+prints+%221.25%22%0A%7D'),l:'5',n:'0',o:'C%2B%2B+source+%231',t:'0')),k:50,l:'4',m:99.99999999999999,n:'0',o:'',s:0,t:'0'),(g:!((h:compiler,i:(compiler:g481,filters:(___0:(),b:'0',binary:'1',commentOnly:'0',demangle:'0',directives:'0',execute:'1',intel:'0',jquery:'3.2.1',length:1,prevObject:(___0:(),length:1,prevObject:(___0:(jQuery321067871834031518191:(display:'')),length:1)),trim:'0',undefined:'1'),fontScale:0.7464959999999999,libs:!(),options:'-std%3Dc%2B%2B11+-O3',source:1),l:'5',n:'0',o:'x86-64+gcc+4.8.1+(Editor+%231,+Compiler+%231)',t:'0')),header:(),k:50,l:'4',n:'0',o:'',s:0,t:'0')),l:'2',n:'0',o:'',t:'0')),version:4"></iframe>
 ???
 Here is is next the equivalent hand-written equivalent.
 I'm 
@@ -358,9 +400,9 @@ Here's that code again along with the hand-written equivalent.
 It's not a very challenging piece of computer code to optimize.
 And as always, you need an optimizing compiler that's good at inlining to pull this off.
 
-Note that I got this to compile with GCC 4.8.1. This is quite an old compiler. 
+Note that I got this to compile with GCC 4.8. This is quite an old compiler. 
 It isn't even C++11-complete. 
-A lot of CNL doesn't work so great with GCC 4.8.1 and I don't currently even test it. 
+A lot of CNL doesn't work so great with GCC 4 and I don't currently even test against it. 
 But when it works, it's possible to make it zero-cost.
 
 
@@ -382,7 +424,7 @@ auto a = numeric_limits<fixed_point<int, -16>>::max() + 1;
 It's not safe to exceed the range of an `int`.
 Therefore it's also not safe to exceed the range of a `fixed_point` of `int`.
 
-Now, I'd like to share one of my favorite features with you at the point.
+Now, I'd like to share one of my favorite C++11 features with you at the point.
 --
 
 ```c++
@@ -397,16 +439,18 @@ static_assert(1 << 1000, "this does not compile");
 ```
 
 ???
-It's called `static_assert` and use if lots. 
+It's called `static_assert` and I use if lots. 
 Just grep for `static_assert` in the CNL test target to see what I mean.
 
 `static_assert` provides a great way to test your code.
 You can use it to test any constant expression.
 
-The first one here will compile fine because the expression is `true`.
+The first expression here will compile fine because the expression is `true`.
 The second one fails to compile because the expression is `false`.
 The third one fails because the expression is not a constant expression.
 Expressions with undefined behavior in them cannot be a constant expression.
+
+CNL uses `constexpr` throughout so most of it can be tested using `static_assert`.
 --
 
 ```c++
@@ -415,9 +459,7 @@ static_assert(numeric_limits<fixed_point<int, -16>>::max() + 1, "error");
 ```
 
 ???
-CNL uses `constexpr` throughout so most of it can be tested using `static_assert`.
-
-When I pass that first `fixed_point` expression to `static_assert`,
+When I pass the former of these two `fixed_point` expression to `static_assert`,
 it falls into the third category.
 You can catch a lot of errors this way and use it to learn how to write the correct code.
 Use `static_assert` and `constexpr`!
@@ -974,13 +1016,14 @@ This is stuff that, say, embedded developers have to do from time to time.
 It's trivial on the face of it but I find that sometimes the simplest tasks are the most error-prone.
 There's a psychology experiment called the four card problem which illustrates how humans are terrible at abstract operations.
 It's fascinating stuff.
+Jason Turner easlier was complaining about confusion caused when things are not-`noexcept`. 
+That's a great example. Double negatives are sometime far more confusing than double-precision floats.
 Sometimes I find `bool`s more confusing than `int`s and `int`s are more confusing than `float`s.
 Cognitive load is a limited quantity to a programmer and anything we can do to lighten that load and put it on machines is worth exploring.
 
 So far I've talked about fundamental integers 
 and I've talked about the types you can make from those and CNL types.
 I'd briefly like to talk about other types from third party libraries that I've tried to combine with CNL.
---
 
 
 
@@ -1047,15 +1090,140 @@ Apart from the deduction guides, you can use virtuall all of the features of CNL
 
 ```c++
 #include <cnl/auxiliary/boost.simd.h>
-using namespace boost::multiprecision;
+using boost::simd::pack;
 
-template<int NumBits, int Exponent = 0>
-using mp_fixed_point = cnl::fixed_point<
-        number<cpp_int_backend<NumBits, NumBits, signed_magnitude, unchecked, void>>,
-        Exponent>;
+template<class T, std::size_t N, int Exponent>
+using fixed_point_pack = fixed_point<pack<T, N>, Exponent>;
 ```
+???
+So for anyone who's used SIMD to make their calculations happen in parallel on a single thread,
+you may have been subjected to many vecdor-specific intrinsics 
+that make you feel like you're writing assembler all of a sudden in your compiler.
+Boost.SIMD is an answer to this. I wraps all those specifics in generic C++ class templates.
+In this code, you can think of `boost::simd::pack` as a little like a `std::array`.
+It contains a fixed number of `int`s or `float`s.
+But it has a set of operators that hook into all those powerful intrinsics.
+
+It's very intense stuff and a great example of a numerics library 
+which exploits template metaprogramming to get high performance at run-time.
+It also needs to run on a lot of compilers -- some of which are pretty old.
+Joel Falcou will be talking on Thursday at 3.15 on this topic.
+That should be an very enlightning talk.
+
+Anyway, I sat down earlier this year and tried to connect these two libraries.
+One trivial pull request later, I had pretty good functionality!
+There's still some work to do to get the sorts of performance gains one might expect.
+But you can write code like this:
+--
+```c++
+using fpp = fixed_point_pack<int, 4, -16>;
+using initializer = initializer<fpp>;
+
+auto expected = fpp{initializer{7.9375+-1, -8.+.125, 0+-5, 3.5+-3.5}};
+auto augend = fpp{initializer{7.9375, -8., 0, 3.5}};
+auto addend = fpp{initializer{-1, .125, -5, -3.5}};
+auto sum = augend + addend;
+```
+???
+I'm using `initializer` here so that I can 
+--
+
+
+
+
+---
+# CNL Today and Tomorrow
+
+???
+So where is CNL? What's left to do?
+Well it's potentially a substantial library.
+I'm chipping away at the features I want to see most.
+Sometimes people put in feature requests or pull requests and I try and prioritize those.
+--
 
 [`github.com/johnmcfarlane/cnl`](https://github.com/johnmcfarlane/cnl)
+
+???
+I'd appreciate any help I can get. 
+The best thing people can do is clone the library and try and use it.
+--
+
+* Arbitrary width
+
+???
+Especially with compound expressions that have a lot of multiplication,
+you run out of bits fast if 64 bits is your limit.
+GCC's `__int128_t` and Abseil's 128-bit class help
+but a general purpose solution would be really nice.
+There is a paper circulating that aims to address this.
+--
+
+* Full Support for Rounding and Overflow
+
+  ```c++
+  template<class Rep = int, class RoundingTag = closest_rounding_tag>
+  class precise_integer : public _impl::number_base<precise_integer<Rep, RoundingTag>, Rep>;
+  ```
+
+  ???
+As you can see, I concentrate on `fixed_point` and `elastic_integer`
+because they are the most machine-friendly way to deal with rounding and overflow.
+But there's a lot of demand for a `safe_integer` type.
+I didn't even get around to showing you the `precise_integer` type.
+But that's available to try out also.
+And then how do allow people to add their own custom rounding and overflow modes?
+The requires the design of an API which is currently placeholder.
+--
+
+  * Full complement of operators for `safe_integer` and `precise_integer`
+???
+Just to warn you, there are holes in the set of operators I've written so far.
+It's a huge set:
+there are all the arithmetic, comparison and logic operators for each type.
+And in writing and testing these, Interoperability issues fall out that need to get addressed.
+It's a lot of work.
+--
+  
+  * Full complement of free functions
+
+    ```c++
+    add(saturated_overflow, UINT32_C(0xFFFFFFFF), UINT32_C(0x12345678))
+    divide(closest_rounding_tag, 2, 3);
+    ```
+
+???
+As well as types to solve these problems, there are free functions that should be able to solve them also.
+It's a big task to write these.
+Compiler vendors help a little here with intrinsics but their lists are incomplete as well.
+And then there's the problem of writing generic versions of these which work efficintly for composite types.
+--
+
+* Better Literals
+
+  ```c++
+  auto a = 0b1111.1111_elastic;  // fixed_point<elastic_integer<8>, -4>
+  ```
+
+???
+I'd like to add literals with a decimal place. 
+This poses some problems.
+It's already quite difficult to parse these strings in C++11.
+It's a lot harder to parse a decimal number with a decimal place in it.
+It's not clear how to do this with existing UDL support.
+--
+
+* Published Documentation (using Standardese?)
+
+  [`johnmcfarlane.github.io/fixed_point/`](http://johnmcfarlane.github.io/fixed_point/)
+  
+???
+I'll be publishing documentation in the next few days.
+For now, you can view my old docs from the `fixed_point` library.
+They mostly still apply.
+--
+
+
+
 
 
 
