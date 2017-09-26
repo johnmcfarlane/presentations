@@ -1,0 +1,1070 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>CNL: A Compositional Numeric Library</title>
+    <meta charset="utf-8">
+    <style>
+      @import url(https://fonts.googleapis.com/css?family=Yanone+Kaffeesatz);
+      @import url(https://fonts.googleapis.com/css?family=Droid+Serif:400,700,400italic);
+      @import url(https://fonts.googleapis.com/css?family=Ubuntu+Mono:400,700,400italic);
+
+      body { font-family: 'Droid Serif'; }
+      h1, h2, h3 {
+        font-family: 'Yanone Kaffeesatz';
+        font-weight: normal;
+      }
+      .remark-code, .remark-inline-code { font-family: 'Ubuntu Mono'; }
+    </style>
+  </head>
+  <body>
+    <textarea id="source">
+
+class: center, middle
+
+# CNL: A Compositional Numeric Library
+
+## John McFarlane
+
+### A9.com
+
+???
+Hi, I'm John McFarlane.
+Today I'd like to talk about numbers.
+
+---
+
+# Background
+
+???
+A couple of years ago, I floated the idea of standardizing fixed-point arithmetic.
+But the reference implementation grew and grew because I needed to prove that 
+you can solve fixed-point in isolation without designing yourself into a corner.
+And to do that, I needed to take a stab at solving a bunch of other problems.
+--
+
+<img style="float: center; width: 100%; height: 100%" src="github.png">
+
+???
+This is the talk about those problems and solutions I've come up with.
+And the library, CNL, where I collect them and work on them.
+
+---
+
+# The Problem with Integers
+
+1. Low resolution
+
+2. Limited range
+
+3. 'Interesting' behavior of arithmetic operations
+
+???
+Those problems are all about integers.
+This talk is not about floating-point numbers.
+They have problems of their own 
+but mostly they don't surprise the unsuspecting user nearly as much as integers.
+And integers can solve some of them, but then you have to face these ones.
+Lets quickly look at floats.
+---
+
+# The Problem with Floating-Point
+
+1. Complicated
+
+   * ± 1.significand * 2 <sup>exponent</sup>
+   
+   * special values, denormalized values, -0
+   
+2. Occasional weirdness can surprise:
+
+   * determinism, associativity, commutativity and ordering
+   
+3. `<cmath>` functions lack `constexpr`
+   
+4. Not the best with fractions
+
+5. Variable resolution
+
+6. Costly in energy and silicon
+
+???
+Take both of these lists with a punch of salt.
+Numerics is a surprisingly deep topic.
+Believe me, I had no idea what I was getting myself into. 
+Writing a numerics library has taught me a tonne of stuff
+that I didn't learn in twenty years of programming.
+
+Also, these lists are not specific to C++. 
+They affect other languages to a certain extent.
+But C++ offers ways in which to tackle some of these problems.
+And that's essentially what CNL tries to do.
+---
+
+# Analysis
+
+???
+We'd like to fix everything that's wrong, right?
+But that's a tall order. There are trade-offs and diminishing returns.
+So I've bitten off a chunk to work on and I hope to show you that it's more valuable than you may have assumed.
+--
+
+* Floating-point problems are not *so* bad.
+
+???
+Firstly, while floats have their peculiarities, 
+they are a fairly self-contained solution to representing real numbers with dynamic range.
+Also, most of the problems with floats are hard to solve at the library level.
+Many are even hard to solve at the language level.
+And many of the biggest problems with floats are that they are too costly and we should make integers easier to use in their place.
+--
+
+* Integers are a powerful abstraction over registers.
+
+???
+Integers are a powerful abstraction over registers.
+And I'm talking specifically about C++'s fundemantal integer types which were inherited from C.
+They have some problems.
+But I hope to convince you that they are fewer than many people believe.
+--
+
+* But we can do a lot better.
+
+???
+Nevertheless, some things about `int` can be addressed.
+And its usefulness can be greatly extended.
+--
+
+* so ...
+
+???
+So here's my aim...
+
+
+
+---
+# Goal
+
+"**Do for `int` what the STL did for `[]`.**"
+
+???
+Do for `int` what the STL did for the humble C array.
+--
+
+* Provide zero-cost abstractions over language-level features:
+
+  ```c++
+  std::array<T, N> a;  // T a[N]
+  std::array<T, N>::iterator i = std::begin(a); // T* i
+  ```
+
+???
+So, provide zero-cost abstractions over language-level features.
+And `std::array` is a great example of this. It's practically just a C array.
+The biggest difference is that it fixes one of C's biggest mistakes: decay.
+You can pass an array by value without it turning into a pointer.
+--
+
+* Maintain a familiar interface:
+
+  ```c++
+  auto const& third = a[2];
+  for (auto const& element : a) { /* ... */ }
+  ```
+  
+???
+Next, maintain a familiar interface.
+Stick with what C++ programmers already know.
+`std::array` lets you look up values by index.
+And you can iterate over its contents the same as with a C array.
+The ideal is that this will produce equivalent machine code.
+In other words, it provides a zero-cost abstration.
+Now of all the components in the standard library, this isn't the most complex.
+It's a very lightweight wrapper over a C array.
+--
+
+* Allow users to opt in to positive-cost functionality:
+
+  ```c++
+  std::array<T, N> a{n};
+  auto const& bad_element = a.at(n+1);  // gotcha!
+  ```
+
+???
+But allow users to opt in to positive-cost functionality.
+It's generally a lot easier to take performance away than it is to give it back.
+So there are additions that make things safer but come at a cost.
+The user can choose to use these if they choose.
+But crucially, if they don't use them, they don't pay for them.
+--
+  
+* And most importantly...
+
+???
+And most importantly ... well -- for this talk at least -- 
+it's not really mentioned so much because you take it for granted when you start using class templates...
+---
+
+# Goal
+
+"**Do for `int` what the STL did for `[]`.**"
+
+* Compose!
+
+  ```c++
+  using fs_cache = unordered_map<filesystem::path, vector<byte>>;
+  ```
+
+???
+Compose!
+You can take the components of the STL and you can combine them with each other.
+And crucially, you can combine them with other things that aren't the STL.
+I just threw this type together. 
+You can look at this line and it tells you a heck of a lot.
+If you're comfortable with class templates, you can quickly guess what this type is for.
+
+But like any high quality tool, the STL doesn't try to do everything.
+So there's a complement to this rule...
+---
+
+# Non-Goal
+
+"**Don't do for `int` what STL doesn't do for `[]`.**"
+
+???
+"Don't do for `int` what STL doesn't do for `[]`."
+Pretty vague, right?
+What do I mean by this?
+--
+
+* Don't make the user pay for what they don't need.
+
+???
+I mentioned this before. 
+It's very tempting to look at the arithmetic types provided by the language
+and decide you going to fix them.
+But how you go about that is crucial.
+First you have to understand what is broken.
+Time for some examples.
+---
+
+# Exhibit A: `fixed_point`
+
+Definition:
+
+```c++
+// cnl/fixed_point.h
+namespace cnl {
+
+    template<typename Rep = int, int Exponent = 0>
+    class fixed_point {
+        // ...
+    private:
+        Rep r;
+    };
+
+}
+```
+
+???
+Here is the declaration for the fixed_point class.
+This class does one, very simple job:
+it adds a decimal point to an integer.
+The dot, dot, dot is an interface that makes `fixed_point` look rather like a floating-point number.
+But really it's just an `int` wrapped in a class.
+--
+
+Example usage:
+
+```c++
+using cnl::fixed_point;
+
+void f() {
+    auto n = fixed_point<int, -8>{ 0.25 };
+    std::cout << n * 5; // prints "1.25"
+}
+```
+
+???
+Here's how you use it to define a fixed-point number.
+I'm using a modern style here with `auto` and uniform initialization.
+There's nothing to stop you instantiating variables in the classic style.
+Sorry if that's not your thing. Please just grit your teeth and bear through it!
+
+Anyway here, n is an int -- only it's worth 8 bits less than normal.
+So the actual value stored is 64 and then it's divided by 256 to get 0.25.
+And when you multiply it by an integer, nothing special happens. 
+The result is 64 times 5 which is 320.
+And 320 over 5 is exactly 1.25.
+
+This is a very thin wrapper over integers.
+Like std::array, it's only adding one little thing to an existing language feature.
+And this is a good thing. But to explain why, you need to know what you're getting.
+
+
+
+---
+# The Good
+
+???
+Lets start with the good news.
+A thin wrapper tends to give you the least costly abstraction.
+In this case, `fixed_point` gives you the same performance as `int` which is hard to beat.
+--
+
+```c++
+bool foo(float f) {
+    auto fixed = fixed_point<int, -16>{f};
+    auto fixed_plus_one = fixed + 1;
+    return fixed_plus_one > fixed;
+}
+```
+
+???
+Because we're essentially performing signed integer arithmetic,
+an optimizing compiler reduces this function down to...
+--
+
+```c++
+bool foo(float) {
+    return true;
+}
+```
+???
+this.
+Don't believe me?
+--
+
+<iframe width="100%" height="200px" src="https://godbolt.org/embed-ro#g:!((g:!((g:!((h:codeEditor,i:(j:1,source:'%23include+%3Chttps://gist.githubusercontent.com/johnmcfarlane/83c775ebac70217e3ccde408fee10556/raw/aeafd7b27ba5e2ff6bdfed68a2c59fecf5b99c80/cnl_complete.h%3E%0Ausing+cnl::fixed_point%3B%0A%0Abool+foo(float+f)+%7B%0A++++auto+fixed+%3D+fixed_point%3Cint,+-16%3E%7Bf%7D%3B%0A++++auto+fixed_plus_one+%3D+fixed+%2B+1%3B%0A++++return+fixed_plus_one+%3E+fixed%3B%0A%7D'),l:'5',n:'0',o:'C%2B%2B+source+%231',t:'0')),k:47.204724409448815,l:'4',m:99.99999999999999,n:'0',o:'',s:0,t:'0'),(g:!((h:compiler,i:(compiler:g481,filters:(___0:(),b:'0',binary:'1',commentOnly:'0',demangle:'0',directives:'0',execute:'1',intel:'0',jquery:'3.2.1',length:1,prevObject:(___0:(),length:1,prevObject:(___0:(jQuery321067871834031518191:(display:'')),length:1)),trim:'0',undefined:'1'),libs:!(),options:'-std%3Dc%2B%2B11+-O3',source:1),l:'5',n:'0',o:'x86-64+gcc+4.8.1+(Editor+%231,+Compiler+%231)',t:'0')),header:(),k:52.79527559055118,l:'4',n:'0',o:'',s:0,t:'0')),l:'2',n:'0',o:'',t:'0')),version:4"></iframe>
+
+???
+Here's the assembler.
+
+And remember the previous example that prints 1.5?
+
+
+
+---
+# The Good
+
+
+<iframe width="100%" height="450px" src="https://godbolt.org/embed-ro#g:!((g:!((g:!((h:codeEditor,i:(fontScale:0.7464959999999999,j:1,source:'%23include+%3Chttps://gist.githubusercontent.com/johnmcfarlane/83c775ebac70217e3ccde408fee10556/raw/aeafd7b27ba5e2ff6bdfed68a2c59fecf5b99c80/cnl_complete.h%3E%0A%23include+%3Ciostream%3E%0A%0Ausing+cnl::fixed_point%3B%0A%0Avoid+f()+%7B%0A++++auto+n+%3D+fixed_point%3Cint,+-8%3E%7B+0.25f+%7D%3B%0A++++std::cout+%3C%3C+float(n+*+5)%3B+//+prints+%221.25%22%0A%7D%0A%0Avoid+i()+%7B%0A++++int+n+%3D+.25f+*+256.f%3B%0A++++std::cout+%3C%3C+(n+*+5)+/+256.f%3B+//+prints+%221.25%22%0A%7D'),l:'5',n:'0',o:'C%2B%2B+source+%231',t:'0')),k:49.97389033942559,l:'4',m:99.99999999999999,n:'0',o:'',s:0,t:'0'),(g:!((h:compiler,i:(compiler:g481,filters:(___0:(),b:'0',binary:'1',commentOnly:'0',demangle:'0',directives:'0',execute:'1',intel:'0',jquery:'3.2.1',length:1,prevObject:(___0:(),length:1,prevObject:(___0:(jQuery321067871834031518191:(display:'')),length:1)),trim:'0',undefined:'1'),fontScale:0.7464959999999999,libs:!(),options:'-std%3Dc%2B%2B11+-O3',source:1),l:'5',n:'0',o:'x86-64+gcc+4.8.1+(Editor+%231,+Compiler+%231)',t:'0')),header:(),k:50.02610966057441,l:'4',n:'0',o:'',s:0,t:'0')),l:'2',n:'0',o:'',t:'0')),version:4"></iframe>
+???
+Here is is next the equivalent hand-written equivalent.
+I'm 
+
+
+
+Here's that code again along with the hand-written equivalent.
+It's not a very challenging piece of computer code to optimize.
+And as always, you need an optimizing compiler that's good at inlining to pull this off.
+
+Note that I got this to compile with GCC 4.8.1. This is quite an old compiler. 
+It isn't even C++11-complete. 
+A lot of CNL doesn't work so great with GCC 4.8.1 and I don't currently even test it. 
+But when it works, it's possible to make it zero-cost.
+
+
+
+---
+# The Bad
+
+???
+But `int` is a sharp tool.
+You can easily cut yourself if you're careless.
+--
+
+```c++
+// undefined behavior
+auto a = numeric_limits<fixed_point<int, -16>>::max() + 1;
+```
+
+???
+It's not safe to exceed the range of an `int`.
+Therefore it's also not safe to exceed the range of a `fixed_point` of `int`.
+
+Now, I'd like to share one of my favorite features with you at the point.
+--
+
+```c++
+// compiles
+static_assert(1 == 1, "this does compile");
+
+// error: static assertion failed: this does not compile
+static_assert(1 != 1, "this does not compile");
+
+// error: left shift count >= width of type
+static_assert(1 << 1000, "this does not compile");
+```
+
+???
+It's called `static_assert` and use if lots. 
+Just grep for `static_assert` in the CNL test target to see what I mean.
+
+`static_assert` provides a great way to test your code.
+You can use it to test any constant expression.
+
+The first one here will compile fine because the expression is `true`.
+The second one fails to compile because the expression is `false`.
+The third one fails because the expression is not a constant expression.
+Expressions with undefined behavior in them cannot be a constant expression.
+--
+
+```c++
+static_assert(numeric_limits<fixed_point<int, -16>>::max() - 1, "OK");
+static_assert(numeric_limits<fixed_point<int, -16>>::max() + 1, "error");
+```
+
+???
+CNL uses `constexpr` throughout so most of it can be tested using `static_assert`.
+
+When I pass that first `fixed_point` expression to `static_assert`,
+it falls into the third category.
+You can catch a lot of errors this way and use it to learn how to write the correct code.
+Use `static_assert` and `constexpr`!
+
+Lets looks at another example...
+
+
+
+---
+# The Bad
+
+```c++
+static_assert(fixed_point<unsigned>{1} < fixed_point<signed>{-1}, "OK(!)");
+```
+
+???
+This line compiles!
+Pretty bad huh?
+Why? Why does fixed_point have underfined behavior? 
+Why does one appear to be less than minus one here?
+Both questions have the same answer.
+--
+
+```c++
+static_assert(numeric_limits<int>::max() + 1, "error");
+static_assert(unsigned{1} < signed{-1}, "evaluates to true");
+```
+
+???
+The answer is because it's `fixed_point` of `signed int` and `fixed_point` of `unsigned int`.
+Integers are already doing this.
+So when you instantiate `fixed_point` using built-in integers, these behaviors come along for the ride.
+If you want something different, you need to instantiate using a different type.
+We'll see this later.
+
+One last thing. I'd like to introduce a couple of C++17 features.
+--
+
+```c++
+static_assert(fixed_point{1u} < fixed_point{-1});
+```
+???
+Here is the same `signed`/`unsigned` comparison in more terse C++17 form.
+All termplate parameters are being deduced from constructor call.
+The left-hand side is deduced as being a `fixed_point` of `unsigned` because of the `1u` there.
+And there is no second string parameter for `static_assert`.
+
+Anyway, so that's the bad.
+
+
+
+---
+# The Ugly
+
+???
+Time for the ugly.
+And this is going to be a foray into division.
+But I'm going to ease you in gently with some multiplication.
+--
+
+```c++
+auto n = fixed_point<int, -8>{1.5};
+auto nn = n * n;    // fixed_point<int, -16>;
+
+static_assert(std::is_same_v<decltype(nn), fixed_point<int, -16>>);
+```
+???
+So what do you get when you multiply fixed_point values.
+Well, remember, this is just integer arithmetic under the hood.
+And when you multiply numbers, you add exponents. 
+So we get a result with an exponent of minus eight plus minus eight.
+
+Note I'm using `static_assert` here to test that the result type is what I expect it to be.
+
+So why not just convert back down to minus eight? 
+That the input type right?
+Well, that's extra work. It looses precision. 
+And what if your two inputs have different exponents?
+
+These are some of the tougher issues I've had to wrestle with when designing the operators for this type.
+But the bottom line, is I'm trying to do the minimum work.
+---
+# The Ugly
+
+<iframe width="100%" height="450px" src="https://godbolt.org/embed-ro#g:!((g:!((g:!((h:codeEditor,i:(fontScale:0.7464959999999999,j:1,source:'%23include+%3Chttps://gist.githubusercontent.com/johnmcfarlane/83c775ebac70217e3ccde408fee10556/raw/aeafd7b27ba5e2ff6bdfed68a2c59fecf5b99c80/cnl_complete.h%3E%0A%0Ausing+cnl::fixed_point%3B%0A%0Afloat+square(float+f)+%7B%0A++++auto+n+%3D+fixed_point%3Cint,+-8%3E%7Bf%7D%3B%0A++++auto+nn+%3D+n+*+n%3B++++//+fixed_point%3Cint,+-16%3E%3B%0A++++return+float(nn)%3B%0A%7D%0A%0Afloat+the_old_way(float+f)+%7B%0A++++auto+n+%3D+static_cast%3Cint%3E(f+*+256.f)%3B%0A++++auto+nn+%3D+n+*+n%3B%0A++++return+nn+/+65536.f%3B%0A%7D'),l:'5',n:'0',o:'C%2B%2B+source+%231',t:'0')),header:(),k:43.96866840731071,l:'4',n:'0',o:'',s:0,t:'0'),(g:!((h:compiler,i:(compiler:clang500,filters:(b:'0',binary:'1',commentOnly:'0',demangle:'0',directives:'0',execute:'1',intel:'0',trim:'0'),fontScale:0.7464959999999999,libs:!(),options:'-std%3Dc%2B%2B17+-O2',source:1),l:'5',n:'0',o:'x86-64+clang+5.0.0+(Editor+%231,+Compiler+%231)',t:'0')),k:56.03133159268929,l:'4',m:99.99999999999999,n:'0',o:'',s:0,t:'0')),l:'2',n:'0',o:'',t:'0')),version:4"></iframe>
+
+???
+And here we see what a simple multiplication operation reduces down to.
+To recap: `fixed_point` only does one thing: scaling.
+It's nice because you see that 65536? It's easy to forget that the scale changed with the multiplication.
+But the multiplication itself is exactly the same as the naked integer equivalent.
+
+What has this got to do with division?
+Well...
+
+
+
+---
+# The Ugly
+
+???
+...where multiplication sums exponent, so division subtracts it.
+That's a big problem in a lot of cases.
+Take this example:
+--
+
+```c++
+constexpr auto n = fixed_point<int, -8>{1.5};
+constexpr auto d = fixed_point<int, -8>{2.25};
+constexpr auto q = n / d;    // fixed_point<int, 0>;
+```
+???
+Here, we subtract minus eight from minus eight to get zero.
+That means we have no fractional digits. It means that `q` is rounded down to zero.
+This is terrible right?
+Well, we're performing integer division -- which is a different beast to floating-point division.
+If you pick two random integers and divide one by the other, you get zero in round fifty percent of cases.
+
+And `fixed_point` just scales integers, it doesn't magically make integer division work well for numbers with decimal places.
+--
+
+```c++
+constexpr auto n = fixed_point<int, -8>{1.5};
+constexpr auto d = fixed_point<int, -8>{2.25};
+constexpr auto q = cnl::divide(n, d);    // fixed_point<long, -31>;
+```
+???
+I've added a helper function that does fancy expensive divide.
+It requires a little explanation.
+
+    
+
+---
+# How Do You Solve a Problem Like Division?
+
+???
+When you multiply two numbers, you get something twice as wide.
+--
+```c++
+5.5 * 5.5 = 30.25
+55. * .55 = 30.25
+```
+???
+Two plus two is four.
+Just as you add the exponents of the operands to get the exponent of the result, 
+so you add the widths of the operands to get the width of the result.
+--
+
+???
+When you divide two numbers, you get an unholy mess.
+--
+```c++
+1 / 100 = 0.01
+10 / 5.5 = 1.818181818181...
+```
+???
+It's very easy to get something that isn't expressible in binary or decimal or any other base.
+At this point, we need a fraction type.
+--
+```c++
+template<typename Integer> class fraction { Integer numerator, denominator; ... };
+```
+???
+Sorry, I haven't written that one yet.
+
+But roughly speaking, division follows a similar trend to multiplication
+in that you put two operands in on the right and you get something out on the left that's got twice the informational bulk.
+--
+```c++
+AAA.BBBBB * CCCCCC.DD = AAACCCCCC.BBBBBDD
+```
+???
+Here's what you get when you multiply two 8-digit numbers with different exponents.
+By the way, you don't just copy those digits and paste them together like a collage. 
+That would be nice.
+No, that's how they contribute to the resultant width.
+For division...
+--
+```c++
+AAA.BBBBB * CCCCCC.DD = AAADD.BBBBBCCCCCC
+```
+???
+...observe the difference here.
+The mathmatical term for this is a switcheroo.
+The divisor (which is the C.D) results in more integer digits if it has more fractional digits.
+And vice verse.
+
+This is what `cnl::divide` does to your `fixed_point` operands.
+--
+```c++
+constexpr auto n = fixed_point<int, -8>{1.5};
+constexpr auto d = fixed_point<int, -8>{2.25};
+constexpr auto q = cnl::divide(n, d);    // fixed_point<long, -31>;
+```
+???
+And it's a bothersome job.
+Firstly, there needs to be a wider type.
+So if your operands are 64-bit and you don't have 128-bit integer support enabled, `divide` won't compile.
+Then, the numerator needs to be shifted a whole bunch to the left so that when the integer division occurs
+and the denominator exponent is subtracted from the numerator, that the result observes switcheroo semantics.
+
+Assuming `int` has 31 digits, and we're multipling two numbers with 8 fractional digits like before,
+that means 23 integer digits. This one's symetrical.
+Result has 23 plus 8 integer digits and 8 plus 23 fractional digits.
+
+This solution is relatively complicated to understand and implement.
+It's costly at run-time, limited in how wide you can go with native types, and not portable.
+For instance, if you're on a system where `int` is 64 bits, or you use `long` on Microsoft and then port to GCC
+you at least get different results or your code stops compiling.
+
+This is why `cnl::divide` isn't the default behavior for the division operator.
+This in turn makes it very hard to replace your floating-point arithmetic with `fixed_point`.
+However, I've tried harder than this.
+Are you ready for the most awesomely lame metahpore in the library.
+
+
+
+---
+# Elasticity
+
+???
+Elasticity!
+I haven't explored promotion and implicit conversion yet
+but they're another 'interesting' feature of fundamental integers.
+--
+
+```c++
+auto n = fixed_point<uint8_t, -8>{0.99609375};
+auto nn = n * n;
+```
+
+???
+Here's a fixed_point type cannot represent one. 
+Its range is zero to one exclusive and its resultion goes down to a two hundred and fifty sixth.
+`n` is the maximum positive value of this type.
+Under the hood, `n` is mostly likely an unsigned char with value of 255.
+I'm taking `unsigned char` 255 and multiplying it by `unsigned char` 255.
+So what happens at run-time and at compile time to `nn`?
+Does it overflow?
+
+
+
+---
+# Elasticity
+
+```c++
+auto n = fixed_point<uint8_t, -8>{0.99609375};
+auto nn = n * n;    // fixed_point<int, -16>{0.9922027587890625};
+```
+???
+No. Because integers are promoted to the width of an `int` before any math is performed on them.
+If you, like me, programmed for many years and did not know about this,
+then you surely avoided writing a load of bugs by sheer good luck and some very pragmatic language design.
+
+However, 32 bits isn't that much these days.
+So when I do this:
+--
+
+```c++
+auto n = fixed_point<int, -31>{0.99609375};
+auto nn = n * n;    // fixed_point<int, -62>{?!?!?!?!?!?!};
+```
+???
+This is a disaster.
+We lost the top half of the number. This is signed overflow. It's undefined behavior. You cannot put this in a `static_assert`.
+If `int` was unsigned instead, it would be defined behavior but the result would be totally wrong.
+
+It seems that what we want is an integer with consistent rules about how and when it promotes to a wider type.
+Queue
+
+
+
+---
+# Elasticity
+
+```c++
+template<int Digits, class Narrowest = int>
+class elastic_integer { WideEnoughInteger r; /* other stuff */ };
+```
+???
+Here is `elastic_integer`.
+
+--
+```c++
+#include <cnl/elastic_integer.h>
+using cnl::elastic_integer;
+auto e = elastic_integer<31>{0x7FFFFFFF};   // r has 31 or more digits
+```
+???
+Here is an elastic integer. 
+It's *probably* going to resolve down to an `int` with maximum value.
+Your architecture may vary.
+What happens when I multipy with this?
+
+--
+```c++
+auto ee = e * e;   // elastic_integer<62>{INT64_C(0x3FFFFFFF00000001)}
+```
+???
+What happens is that we break the 32-bit barrier -- as I call it.
+I could give a whole talk on elastic_integer.
+Note that when you add numbers you need one extra bit.
+--
+```c++
+auto _2ee = ee + ee;   // elastic_integer<63>{INT64_C(0x7FFFFFFE00000002)}
+```
+???
+Now would be a good time to point out that CNL is just a bunch of other peoples ideas copy-pasted to look like a coherent library.
+The foundation for all of those `fixed_point` operations was already figured out when I found it in Matheus Izvekov's fp library.
+And the credit for the idea of a type which automatically widens results at compile time to avoid overflow goes to Lawrence Crowl.
+He'd been working to standardize fixed-point arithmetic for years before I got interested in this stuff.
+He also proposes combining this feature with fixed-point arithmetic (among other things) to make one super-type.
+But I'm not done stealing other peoples ideas yet.
+Here's how I think an STL-inspired library should achieve this.
+--
+```c++
+auto fpe = fixed_point<elastic_integer<31>, -31>{0.99609375};
+```
+???
+Up until now, I've been composing library types from fundamental integer types.
+But in CNL, compositional means a whole lot more than that.
+Here, we've made a composite type which addresses two concerns in unison.
+The concern of tracking exponent is addressed by `fixed_point`.
+The concern of ensuring results are wide enough is addressed by `elastic_integer`.
+And when you perform multiplication...
+--
+
+```c++
+auto sq = fpe * fpe;  // fixed_point<elastic_integer<62>, -62>{0.9922027587890625}
+```
+???
+You get the right answer.
+This is powerful stuff.
+This required no extra plumbing to work and what you get is lossless real-number approximation with a minimum of run-time integer arithmetic.
+https://godbolt.org/g/Rin8Dn
+
+Sadly, the story is not so plain and simple when we return to division.
+Remember I said one of the problems with our 'nice' divide operation is that it's not portable?
+That's because the number of integer digits in types like `int` and `long` are not the same across all platforms.
+Well, `elastic_integer` solves that problem.
+And `fixed_point` of `elastic_integer` is a safer type.
+Just like `std::array::at`, it's a comfort feature that users can opt into if they want a little more safety.
+Sometimes it'll use more bits than you actually need but that's OK.
+So I feel as if it's not so much of a stretch to introduce safer, slower division as the default for elastic `fixed_point`.
+So lets take `sq` here and divide it by itself.
+
+--
+```c++
+#include <cnl/auxiliary/elastic_fixed_point.h>
+auto q = sq / sq; // fixed_point<elastic_integer<124>, -62>{1}, q), "");
+```
+???
+Sorry it's just an unexciting result. 
+One. We're using 124 bits to express the value one.
+That's what I mean by "more bits than you actually need"
+
+It actually rounds up to 128 bits.
+Don't try this in Microsoft's compiler because it doesn't support non-standard 128-bit integers.
+Under common conditions, GCC and Clang can do this.
+I fully expect Abseil's 128-bit type to work with this but I haven't tried it yet.
+Arbitrary width types is a concern which the numerics study group has on the agenda 
+but it's still on the TODO list for CNL.
+
+Also note that I've had to include a header with a custom `operator/` here.
+These are warts in the design. 
+It's imperfect.
+But I think that elastic_fixed_point hits a sweet spot in terms of efficiency and usability
+and I think it's got a lot of potential.
+
+But this type alone cannot avoid overflow because not all C++ math is static and functional.
+
+
+
+---
+# Run-time Safety
+
+???
+And by that I mean what happens when you actually want to mutate an existing value?
+--
+```c++
+#include <cnl/safe_integer.h>
+using cnl::safe_integer;
+auto i = safe_integer<uint8_t>{255};
+```
+???
+Well, here's a third type. It's called `safe_integer`.
+It's job is to catch and handle run-time overflow conditions.
+It assumes you're using your integers to express quantities 
+and that you don't want to exceed the range of those integers.
+--
+
+```c++
+auto j = i + 1;
+```
+???
+What do you think happens when I add one to a maxed-out 8-bit integer?
+
+
+
+---
+# Run-time Safety
+
+```c++
+#include <cnl/safe_integer.h>
+using cnl::safe_integer;
+auto i = safe_integer<uint8_t>{255};
+```
+
+```c++
+auto j = i + 1; // safe_integer<int>{256}
+```
+
+???
+Seems like a trick question right?
+It really shouldn't be. 
+Once you understand the peculiarities of C++ integers
+and once you understand what is required to write generic numeric types in C++,
+it should be second nature to expect the result of arithmetic operations to be `int` width.
+
+If you thought this was just the new-fangled modern equivalent to this...
+--
+
+```c++
+safe_integer<uint8_t> k = i + 1;  // throw std::overflow_error
+```
+???
+Then again, you need to understand what C++ is doing to your types.
+This is a great reason to consider using `auto` more.
+This code is doing more work. The addition promotes to `int` width.
+And then the assignment converts back down to `uint8_t`.
+And finally we see `safe_integer` earn its reputation.
+By default, it throws on overflow.
+And if you try and do this in a constant expression, e.g. a `static_assert`, you get a compiler error.
+--
+
+```c++
+constexpr safe_integer<uint8_t> k = i + 1;
+static_assert(cnl::_impl::identical(safe_integer<int>{256}, k));
+```
+
+```
+[ 29%] Building CXX object src/test/CMakeFiles/fp_test.dir/cppcon2017.cpp.o
+/home/john/cnl/src/test/cppcon2017.cpp:151:37: fatal error: constexpr variable 'k' must be initialized by a constant expression
+    constexpr safe_integer<uint8_t> k = i + 1;
+                                    ^~~~~~~~~
+/home/john/cnl/include/cnl/overflow.h:52:40: note: subexpression not valid in a constant expression
+            return condition ? value : throw std::overflow_error("");
+                                       ^
+```
+and so on...
+???
+I know, I need to do some work on making errors more readable in my library.
+C++ also needs to get better at producing compile-time error messages.
+It's something that takes a lot of work. 
+But my priorities are correctness, efficiency and usability in that order.
+And CNL is not completely done yet.
+
+Needless to say, you can create other composite types with `safe_integer`
+by, for instance, combining it with `fixed_point` and `elastic_integer`.
+But there's a lot to get through. See my CppNow talk for more on that.
+
+
+
+---
+# Deduction and UDLs
+???
+One of the big C++17 wins for CNL is class template deduction
+--
+
+```c++
+auto x = fixed_point{42ul}; // fixed_point<unsigned long, 0>{42}
+```
+???
+I've shown this previously.
+In this example, the literal `42ul`.
+Most of the time, your literals are at least 32-bits wide.
+So this kind of thing...
+--
+```c++
+auto y = fixed_point{128};  // fixed_point<int, 0>{1}
+```
+???
+is wasteful.
+It's another example of many bits being used to express just one.
+--
+```c++
+using cnl::literals;
+auto z = fixed_point{128_c};  // fixed_point<int, 7>{128}
+```
+???
+So there's a user-defined literal for `integral_constant`.
+Two things to note here: firstly, the `_c` on the 128 there.
+That means that literal is an `integral_constant`
+which means that it's a template with 128 as one of the template parameters.
+This in turn means that `fixed_point` can use a deduction guide which picks a type with the right exponent.
+That's the other thing to note: `z` has a positive exponent.
+It's just an `int` with value one under the hood.
+Lets use some binary literals to make things a little clerer
+--
+```c++
+auto a = fixed_point{0b10000000000000000000000000000000000000000_c};  
+// a === fixed_point<int, 40>{0b10000000000000000000000000000000000000000l}
+```
+???
+This number wouldn't normally fit in an `int`.
+But the positive exponent exploits the fact that all of those lower bits are zero.
+When they are not zero...
+--
+```c++
+auto b = fixed_point{0b11111111111111111111111111111111111111111_c};
+// b === fixed_point<long, 0>{0b11111111111111111111111111111111111111111l}
+```
+???
+The deduction guide picks a wider type.
+--
+
+
+---
+# Deduction and UDLs
+???
+So `_c` in combination with `fixed_point` ensures that you aren't wasting any low bits.
+And `elastic_integer` is great at ensurint you don't waste any high bits.
+--
+```c++
+auto c = elastic_integer{2017_c}; // elastic_integer<11>{2017}
+```
+???
+For instance, `2017` fits into 11 bits.
+But what about composite types?
+That's a lot harder.
+There really isn't enough information in a literal to convey what composite type you want.
+But you can define a different literal for each composite type you want.
+--
+```c++
+auto e = 0x7f000_elastic; // fixed_point<elastic_integer<7>, 12>{0x7f000}
+```
+???
+Here is an elastic fixed-point number that uses 7 bits.
+
+Generally, user-defined literals and integral constants are an exciting area.
+Another neat trick I borrowed from Matheus Izvekov's fp library 
+involves applying the shift operator to fixed_point values.
+```c++
+auto s = e >> 1_c;  // fixed_point<elastic_integer<7>, 11>{0x3f800}
+```
+???
+Because a `fixed_point` variable is already shifted by a static amount,
+it's a nop to shift it by another static amount.
+Here, I'm halving the value of `e` to get `s` 
+but under the hood, the value is exactly the same. 
+It's just the type that's changed.
+
+This is stuff that, say, embedded developers have to do from time to time.
+It's trivial on the face of it but I find that sometimes the simplest tasks are the most error-prone.
+There's a psychology experiment called the four card problem which illustrates how humans are terrible at abstract operations.
+It's fascinating stuff.
+Sometimes I find `bool`s more confusing than `int`s and `int`s are more confusing than `float`s.
+Cognitive load is a limited quantity to a programmer and anything we can do to lighten that load and put it on machines is worth exploring.
+
+So far I've talked about fundamental integers 
+and I've talked about the types you can make from those and CNL types.
+I'd briefly like to talk about other types from third party libraries that I've tried to combine with CNL.
+--
+
+
+
+---
+# Interoperability - Boost.Multiprecision
+
+```c++
+#include <cnl/auxiliary/boost.multiprecision.h>
+using namespace boost::multiprecision;
+
+template<int NumBits, int Exponent = 0>
+using mp_fixed_point = cnl::fixed_point<
+        number<cpp_int_backend<NumBits, NumBits, signed_magnitude, unchecked, void>>,
+        Exponent>;
+```
+???
+So this is a bit of a screenful.
+`mp_fixed_point` is a `fixed_point` type which uses Boost.Multiprecision for its integer.
+--
+
+Fixed-Point + Boost.Multiprecision:
+???
+I've played with it a little.
+--
+
+* googol (10<sup>100</sup>) ✓
+
+???
+I've used it to store a googol which is a 1 followed by a hundred zeros.
+This isn't a huge deal because that's a whole number.
+Boost.Multiprecision can already do that.
+--
+
+* googolth (1 / googol) ✓
+
+???
+So then I got one over a googol to get a googolth.
+That's a little more impressive.
+I think it's only an approximate value because binary isn't too great at decimal fractions.
+But one thing I haven't tried is ...
+--
+
+* googolplex (10<sup>googol</sup>) ✗
+
+???
+Sadly, a googolplex is beyond the range of this type.
+The reason is that both libraries use built-in integers to express the number of digits
+and there isn't a built-in integer type that can hold a googol.
+It has to be a built-in integer because it's a non-type template parameter.
+This is why we urgently need to lift the limit on what can be a non-type template.
+This is the compelling use case Bjarne was asking for last night during the Grill the Audience panel.
+HOW ON EARTH can we be expected to easily express a googolplex at compile-time with such a limited choice of non-type template parameters?
+It's an outrage.
+
+Seriously, there are a tonne of possible future language features that will affect how math is done with libraries like CNL.
+Concepts, contracts, the spaceship operator and metaclasses will all have a significant bearing on how numeric types are written and used.
+But it's really in C++11 that a lot of what is currently possible came on line.
+Apart from the deduction guides, you can use virtuall all of the features of CNL with a C++11 compliant compiler.
+
+
+
+---
+# Interoperability - Boost.SIMD
+
+```c++
+#include <cnl/auxiliary/boost.simd.h>
+using namespace boost::multiprecision;
+
+template<int NumBits, int Exponent = 0>
+using mp_fixed_point = cnl::fixed_point<
+        number<cpp_int_backend<NumBits, NumBits, signed_magnitude, unchecked, void>>,
+        Exponent>;
+```
+
+[`github.com/johnmcfarlane/cnl`](https://github.com/johnmcfarlane/cnl)
+
+
+
+
+    </textarea>
+    <script src="https://remarkjs.com/downloads/remark-latest.min.js">
+    </script>
+    <script>
+      var slideshow = remark.create();
+    </script>
+  </body>
+</html>
