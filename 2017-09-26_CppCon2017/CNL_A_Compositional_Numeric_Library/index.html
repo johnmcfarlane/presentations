@@ -925,6 +925,7 @@ But there's a lot to get through. See my CppNow talk for more on that.
 
 ---
 # Deduction and UDLs
+
 ???
 One of the big C++17 wins for CNL is class template deduction
 --
@@ -979,6 +980,7 @@ The deduction guide picks a wider type.
 
 ---
 # Deduction and UDLs
+
 ???
 So `_c` in combination with `fixed_point` ensures that you aren't wasting any low bits.
 And `elastic_integer` is great at ensurint you don't waste any high bits.
@@ -1162,10 +1164,10 @@ There is a paper circulating that aims to address this.
 
   ```c++
   template<class Rep = int, class RoundingTag = closest_rounding_tag>
-  class precise_integer : public _impl::number_base<precise_integer<Rep, RoundingTag>, Rep>;
+  class precise_integer;
   ```
 
-  ???
+???
 As you can see, I concentrate on `fixed_point` and `elastic_integer`
 because they are the most machine-friendly way to deal with rounding and overflow.
 But there's a lot of demand for a `safe_integer` type.
@@ -1210,21 +1212,6 @@ This poses some problems.
 It's already quite difficult to parse these strings in C++11.
 It's a lot harder to parse a decimal number with a decimal place in it.
 It's not clear how to do this with existing UDL support.
---
-
-* Published Documentation (using Standardese?)
-
-  [`johnmcfarlane.github.io/fixed_point/`](http://johnmcfarlane.github.io/fixed_point/)
-  
-???
-I'll be publishing documentation in the next few days.
-For now, you can view my old docs from the `fixed_point` library.
-They mostly still apply.
---
-
-
-
-
 
 
 
