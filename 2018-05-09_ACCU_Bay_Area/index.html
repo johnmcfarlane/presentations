@@ -376,7 +376,7 @@ AAA.BBBBB * CCCCCC.DD = AAACCCCCC.BBBBBDD
 ```
 --
 ```c++
-10 / 100 = 00.01
+10 / 100 = 00.10
 1 / 1000 = 0.001
 ```
 --
@@ -385,7 +385,7 @@ AAA.BBBBB / CCCCCC.DD = AAADD.BBBBBCCCCCC
 ```
 --
 ```c++
-1 / 3 = 1.333333333...
+1 / 3 = 0.333333333...
 ```
 
 
@@ -482,9 +482,9 @@ auto q = fixed_point{fractional{sq, sq}};
 
 --
 ```c++
-#include <cnl/safe_integer.h>
-using cnl::safe_integer;
-auto i = safe_integer<uint8_t>{255};
+#include <cnl/overflow_integer.h>
+using cnl::overflow_integer;
+auto i = overflow_integer<uint8_t>{255};
 ```
 --
 
@@ -497,31 +497,31 @@ auto j = i + 1;
 # Run-time Safety
 
 ```c++
-#include <cnl/safe_integer.h>
-using cnl::safe_integer;
-auto i = safe_integer<uint8_t>{255};
+#include <cnl/overflow_integer.h>
+using cnl::overflow_integer;
+auto i = overflow_integer<uint8_t>{255};
 ```
 
 ```c++
-auto j = i + 1; // safe_integer<int>{256}
+auto j = i + 1; // overflow_integer<int>{256}
 ```
 
 --
 
 ```c++
-safe_integer<uint8_t> k = i + 1;  // throw std::overflow_error
+overflow_integer<uint8_t> k = i + 1;  // throw std::overflow_error
 ```
 --
 
 ```c++
-constexpr safe_integer<uint8_t> k = i + 1;
-static_assert(cnl::_impl::identical(safe_integer<int>{256}, k));
+constexpr overflow_integer<uint8_t> k = i + 1;
+static_assert(cnl::_impl::identical(overflow_integer<int>{256}, k));
 ```
 
 ```
 [ 29%] Building CXX object src/test/CMakeFiles/fp_test.dir/cppcon2017.cpp.o
 /home/john/cnl/src/test/cppcon2017.cpp:151:37: fatal error: constexpr variable 'k' must be initialized by a constant expression
-    constexpr safe_integer<uint8_t> k = i + 1;
+    constexpr overflow_integer<uint8_t> k = i + 1;
                                     ^~~~~~~~~
 /home/john/cnl/include/cnl/overflow.h:52:40: note: subexpression not valid in a constant expression
             return condition ? value : throw std::overflow_error("");
@@ -678,7 +678,7 @@ auto sum = augend + addend;
 
 --
 
-  * Full complement of operators for `safe_integer` and `precise_integer`
+  * Full complement of operators for `overflow_integer` and `precise_integer`
 --
   
   * Full complement of free functions
